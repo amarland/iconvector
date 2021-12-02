@@ -48,7 +48,7 @@ fun loadIconVGResource(resources: Resources, id: Int): ImageVector =
                 radialGradientCreator = RadialGradientCreatorImpl
             ).imageVector.also { imageVector ->
                 if (BuildConfig.DEBUG) {
-                    Log.d(Thread.currentThread().stackTrace[1].methodName, imageVector.asString())
+                    Log.d("loadIconVGResource", imageVector.asString())
                 }
             }
         }

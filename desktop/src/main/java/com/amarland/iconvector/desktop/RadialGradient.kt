@@ -21,7 +21,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
-import com.amarland.iconvector.lib.AbstractRadialGradient
+import com.amarland.iconvector.lib.AbstractRadialGradientDelegate
 import com.amarland.iconvector.lib.RadialGradientCreator
 import org.jetbrains.skia.FilterTileMode
 import org.jetbrains.skia.GradientStyle
@@ -29,14 +29,14 @@ import org.jetbrains.skia.Matrix33
 import org.jetbrains.skia.Shader
 
 @Immutable
-internal class ActualRadialGradient(
+internal class RadialGradientDelegate(
     colors: List<Color>,
     stops: List<Float>? = null,
     center: Offset,
     radius: Float,
     tileMode: TileMode = TileMode.Clamp,
     matrix: Matrix
-) : AbstractRadialGradient<Shader>(
+) : AbstractRadialGradientDelegate<Shader>(
     colors,
     stops,
     center,
@@ -69,13 +69,7 @@ internal class ActualRadialGradient(
         )
     )
 
-    override fun asBrush() = object : ShaderBrush() {
-
-        override val intrinsicSize: Size
-            get() = this@ActualRadialGradient.intrinsicSize
-
-        override fun createShader(size: Size) = this@ActualRadialGradient.createShader(size)
-    }
+    override fun asBrush() = ActualRadialGradient(this)
 
     companion object {
 
@@ -90,6 +84,20 @@ internal class ActualRadialGradient(
     }
 }
 
+@Immutable
+internal class ActualRadialGradient(private val delegate: RadialGradientDelegate) : ShaderBrush() {
+
+    override val intrinsicSize = delegate.intrinsicSize
+
+    override fun createShader(size: Size) = delegate.createShader(size)
+
+    override fun equals(other: Any?) = delegate == other
+
+    override fun hashCode() = delegate.hashCode()
+
+    override fun toString() = delegate.toString()
+}
+
 internal object RadialGradientCreatorImpl : RadialGradientCreator<Shader> {
 
     override fun create(
@@ -99,7 +107,7 @@ internal object RadialGradientCreatorImpl : RadialGradientCreator<Shader> {
         radius: Float,
         tileMode: TileMode,
         matrix: Matrix
-    ) = ActualRadialGradient(
+    ) = RadialGradientDelegate(
         colors,
         stops,
         center,

@@ -44,7 +44,7 @@ interface RadialGradientCreator<S> {
         radius: Float,
         tileMode: TileMode = TileMode.Clamp,
         matrix: Matrix
-    ): AbstractRadialGradient<S>
+    ): AbstractRadialGradientDelegate<S>
 }
 
 /*

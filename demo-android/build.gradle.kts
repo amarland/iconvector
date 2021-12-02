@@ -28,14 +28,11 @@ android {
         languageVersion = "1.5"
         apiVersion = "1.5"
         jvmTarget = "${JavaVersion.VERSION_1_8}"
+        freeCompilerArgs = freeCompilerArgs + "-Xopt-in=kotlin.RequiresOptIn"
     }
 
     buildFeatures.compose = true
     composeOptions.kotlinCompilerExtensionVersion = composeAndroidVersion
-
-    kotlinOptions {
-        freeCompilerArgs = freeCompilerArgs + "-Xopt-in=kotlin.RequiresOptIn"
-    }
 }
 
 dependencies {

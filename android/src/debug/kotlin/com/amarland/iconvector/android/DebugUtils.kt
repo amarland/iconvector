@@ -16,11 +16,12 @@
 
 package com.amarland.iconvector.android
 
-import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.*
 import kotlin.reflect.KClass
 import kotlin.reflect.full.declaredMemberProperties
-import kotlin.reflect.jvm.isAccessible
 
 internal fun ImageVector.asString() =
     buildString {
@@ -62,9 +63,9 @@ private fun VectorPath.writeTo(sb: StringBuilder, level: Int) {
     var mutableLevel = level
 
     with(sb) {
-        indent(mutableLevel++)
+        indent(mutableLevel)
         appendLine("path:")
-        indent(mutableLevel++)
+        indent(++mutableLevel)
         append("fill:")
         val brush = fill
         if (brush == null) {
@@ -74,14 +75,14 @@ private fun VectorPath.writeTo(sb: StringBuilder, level: Int) {
                 append(' ').appendLine(brush.value.toHexString())
             } else {
                 appendLine()
-                if (brush is LinearGradient) {
-                    writeLinearGradientTo(this, brush, mutableLevel++)
-                } else if (brush is RadialGradient) {
-                    writeRadialGradientTo(this, brush, mutableLevel++)
-                }
+                appendLine(
+                    brush.toString().prependIndent(
+                        String(CharArray((mutableLevel + 1) * 2) { ' ' })
+                    )
+                )
             }
         }
-        indent(mutableLevel--)
+        indent(mutableLevel)
         append("pathData:")
         pathData.joinTo(this, separator = " ", prefix = " ") { node ->
             val (letter, values) = when (node) {
@@ -97,40 +98,19 @@ private fun VectorPath.writeTo(sb: StringBuilder, level: Int) {
                     'A' to PathNode.ArcTo::class.declaredMemberPropertyValues(node)
                 else -> return@joinTo ""
             }
-            values.joinTo(this, separator = " ", prefix = "$letter ") { value ->
+            values.joinToString(separator = " ", prefix = "$letter ") { value ->
                 if (value is Boolean) {
                     if (value) "1" else "0"
-                } else value.toString()
+                } else "%.2f".format(value as Float)
             }
         }
+        appendLine()
     }
 }
 
 private fun StringBuilder.indent(level: Int) = append(CharArray(level * 2) { ' ' })
 
 private fun Color.toHexString() = toArgb().toUInt().toString(16)
-
-private fun writeLinearGradientTo(sb: StringBuilder, linearGradient: LinearGradient, level: Int) {
-    writeGradientTo(sb, linearGradient, level)
-}
-
-private fun writeRadialGradientTo(sb: StringBuilder, radialGradient: RadialGradient, level: Int) {
-    writeGradientTo(sb, radialGradient, level)
-}
-
-private inline fun <reified B : Any> writeGradientTo(sb: StringBuilder, brush: B, level: Int) {
-    for (property in B::class.declaredMemberProperties) {
-        with(sb) {
-            indent(level)
-            append("${property.name} = ")
-            val value = property.apply { isAccessible = true }.get(brush)
-            if (value is Iterable<*> && value.first() as? Color != null) {
-                value.joinTo(this) { element -> (element as Color).toHexString() }
-                appendLine()
-            } else appendLine(value)
-        }
-    }
-}
 
 private fun <T : Any> KClass<T>.declaredMemberPropertyValues(receiver: T) =
     declaredMemberProperties.map { property -> property.get(receiver) }

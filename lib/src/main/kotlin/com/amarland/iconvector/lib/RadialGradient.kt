@@ -25,7 +25,7 @@ import androidx.compose.ui.graphics.TileMode
 
 // Copy of https://cs.android.com/androidx/platform/frameworks/support/+/1ac23550d12fc382ce65f7207c9fd89abe6afa62:compose/ui/ui-graphics/src/commonMain/kotlin/androidx/compose/ui/graphics/Brush.kt;l=505,
 // but modified to add the ability to specify a transform matrix.
-abstract class AbstractRadialGradient<S>(
+abstract class AbstractRadialGradientDelegate<S>(
     private val colors: List<Color>,
     private val stops: List<Float>?,
     private val center: Offset,
@@ -34,10 +34,9 @@ abstract class AbstractRadialGradient<S>(
     private val matrix: Matrix
 ) {
 
-    protected val intrinsicSize: Size
-        get() = if (radius.isFinite()) Size(radius * 2, radius * 2) else Size.Unspecified
+    val intrinsicSize = if (radius.isFinite()) Size(radius * 2, radius * 2) else Size.Unspecified
 
-    protected fun createShader(size: Size): S {
+    fun createShader(size: Size): S {
         val centerX: Float
         val centerY: Float
         if (center.isUnspecified) {
@@ -72,7 +71,7 @@ abstract class AbstractRadialGradient<S>(
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (other !is AbstractRadialGradient<*>) return false
+        if (other !is AbstractRadialGradientDelegate<*>) return false
 
         if (colors != other.colors) return false
         if (stops != other.stops) return false
@@ -98,14 +97,14 @@ abstract class AbstractRadialGradient<S>(
         val centerValue = if (center.isSpecified) "center=$center" else ""
         val radiusValue = if (radius.isFinite()) "radius=$radius" else ""
         return """
-            |RadialGradient(
-            |  colors=$colors,
-            |  stops=$stops,
-            |  $centerValue,
-            |  $radiusValue,
-            |  tileMode=$tileMode
-            |  matrix=
-            |${matrix.toString().prependIndent("    ")}
-            |)""".trimMargin()
+            !RadialGradient(
+            !  colors=$colors,
+            !  stops=$stops,
+            !  $centerValue,
+            !  $radiusValue,
+            !  tileMode=$tileMode
+            !  matrix=
+            !${matrix.toString().prependIndent("    ")}
+            !)""".trimMargin("!") // '|' is used by Matrix::toString
     }
 }
