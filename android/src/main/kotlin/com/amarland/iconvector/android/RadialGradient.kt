@@ -23,7 +23,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import com.amarland.iconvector.lib.AbstractRadialGradientDelegate
-import com.amarland.iconvector.lib.RadialGradientCreator
+import com.amarland.iconvector.lib.RadialGradientDelegateCreator
+import com.amarland.iconvector.lib.RadialGradientDelegateOwner
 import android.graphics.Matrix as AndroidMatrix
 import android.graphics.RadialGradient as AndroidRadialGradient
 
@@ -149,7 +150,9 @@ internal class RadialGradientDelegate(
 }
 
 @Immutable
-internal class ActualRadialGradient(private val delegate: RadialGradientDelegate) : ShaderBrush() {
+internal class ActualRadialGradient(
+    override val delegate: RadialGradientDelegate
+) : ShaderBrush(), RadialGradientDelegateOwner<Shader> {
 
     override val intrinsicSize = delegate.intrinsicSize
 
@@ -162,7 +165,7 @@ internal class ActualRadialGradient(private val delegate: RadialGradientDelegate
     override fun toString() = delegate.toString()
 }
 
-internal object RadialGradientCreatorImpl : RadialGradientCreator<Shader> {
+internal object RadialGradientDelegateCreatorImpl : RadialGradientDelegateCreator<Shader> {
 
     override fun create(
         colors: List<Color>,

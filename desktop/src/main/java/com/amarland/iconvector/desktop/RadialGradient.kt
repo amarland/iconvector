@@ -22,7 +22,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import com.amarland.iconvector.lib.AbstractRadialGradientDelegate
-import com.amarland.iconvector.lib.RadialGradientCreator
+import com.amarland.iconvector.lib.RadialGradientDelegateCreator
+import com.amarland.iconvector.lib.RadialGradientDelegateOwner
+import com.amarland.iconvector.lib.toMatrix33Values
 import org.jetbrains.skia.FilterTileMode
 import org.jetbrains.skia.GradientStyle
 import org.jetbrains.skia.Matrix33
@@ -61,11 +63,7 @@ internal class RadialGradientDelegate(
         GradientStyle(
             tileMode.toSkiaTileMode(),
             isPremul = true,
-            Matrix33(
-                matrix[0, 0], matrix[0, 1], matrix[0, 3],
-                matrix[1, 0], matrix[1, 1], matrix[1, 3],
-                matrix[3, 0], matrix[3, 1], matrix[3, 3]
-            )
+            Matrix33(*matrix.toMatrix33Values())
         )
     )
 
@@ -85,7 +83,9 @@ internal class RadialGradientDelegate(
 }
 
 @Immutable
-internal class ActualRadialGradient(private val delegate: RadialGradientDelegate) : ShaderBrush() {
+internal class ActualRadialGradient(
+    override val delegate: RadialGradientDelegate
+) : ShaderBrush(), RadialGradientDelegateOwner<Shader> {
 
     override val intrinsicSize = delegate.intrinsicSize
 
@@ -98,7 +98,7 @@ internal class ActualRadialGradient(private val delegate: RadialGradientDelegate
     override fun toString() = delegate.toString()
 }
 
-internal object RadialGradientCreatorImpl : RadialGradientCreator<Shader> {
+internal object RadialGradientDelegateCreatorImpl : RadialGradientDelegateCreator<Shader> {
 
     override fun create(
         colors: List<Color>,

@@ -20,9 +20,18 @@ dependencies {
     implementation("org.jetbrains.compose.ui:ui:$composeJbVersion")
     implementation("com.squareup.okio:okio:$okioVersion")
 
+    val batikVersion = "1.14"
+
     testImplementation(platform("org.junit:junit-bom:5.8.1"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.junit.jupiter:junit-jupiter-params")
+    testImplementation("org.apache.xmlgraphics:batik-transcoder:$batikVersion")
+    // https://stackoverflow.com/questions/45239099/apache-batik-no-writeadapter-is-available
+    testImplementation("org.apache.xmlgraphics:batik-codec:$batikVersion")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 tasks.withType<KotlinCompile>().all {

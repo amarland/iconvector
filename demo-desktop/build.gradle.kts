@@ -12,8 +12,10 @@ java {
 }
 
 dependencies {
+    val okioVersion: String by rootProject.extra
+
     implementation(compose.desktop.currentOs)
-    implementation("org.reflections:reflections:0.10.2")
+    implementation("com.squareup.okio:okio:$okioVersion")
 
     implementation(project(":desktop"))
 }

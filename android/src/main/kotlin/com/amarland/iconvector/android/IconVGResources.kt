@@ -45,7 +45,7 @@ fun loadIconVGResource(resources: Resources, id: Int): ImageVector =
         .use { source ->
             IconVGMachine(
                 source,
-                radialGradientCreator = RadialGradientCreatorImpl
+                radialGradientDelegateCreator = RadialGradientDelegateCreatorImpl
             ).imageVector.also { imageVector ->
                 if (BuildConfig.DEBUG) {
                     Log.d("loadIconVGResource", imageVector.asString())

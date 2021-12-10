@@ -108,3 +108,8 @@ abstract class AbstractRadialGradientDelegate<S>(
             !)""".trimMargin("!") // '|' is used by Matrix::toString
     }
 }
+
+interface RadialGradientDelegateOwner<S> {
+
+    val delegate: AbstractRadialGradientDelegate<S>
+}

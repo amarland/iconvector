@@ -17,19 +17,14 @@
 
 package com.amarland.iconvector.lib
 
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Matrix
-import androidx.compose.ui.graphics.TileMode
-import okio.Buffer
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.MethodSource
 
 // Source: https://github.com/google/iconvg/blob/e5239c1a78325368d6d8eca4757bdee916c3e564/src/dart/lib/decoder.dart#L66
 
-class DecoderTest {
+class DecoderInternalsTest {
 
     @Test
     fun testDecoders() {
@@ -108,39 +103,6 @@ class DecoderTest {
             assertEquals(15F / 360F, decodeZeroToOneNumber())
             assertEquals(40F / 360F, decodeZeroToOneNumber())
             assertEquals(0.00277777761220932F /* approx 1.0/360.0 */, decodeZeroToOneNumber())
-        }
-    }
-
-    @ParameterizedTest
-    @MethodSource("provideInvalidByteSequences")
-    fun testSimpleInvalidByteSequences(bytes: ByteArray) {
-        assertThrowsExactly(FormatException::class.java) {
-            IconVGMachine(
-                source = Buffer().write(bytes),
-                radialGradientCreator = object : RadialGradientCreator<Nothing> {
-
-                    override fun create(
-                        colors: List<Color>, stops: List<Float>?,
-                        center: Offset, radius: Float,
-                        tileMode: TileMode, matrix: Matrix
-                    ) = throw UnsupportedOperationException()
-                }
-            )
-        }
-    }
-
-    companion object {
-
-        @JvmStatic
-        @Suppress("unused")
-        fun provideInvalidByteSequences(): Array<ByteArray> {
-            val oneHundredAndThirtySeven: UByte = 0x89U // express as UByte as Bytes are signed
-            return arrayOf(
-                byteArrayOf(),
-                byteArrayOf(0x00),
-                byteArrayOf(oneHundredAndThirtySeven.toByte(), 0x49, 0x56),
-                byteArrayOf(oneHundredAndThirtySeven.toByte(), 0x49, 0x56, 0x46, 0x00),
-            )
         }
     }
 }

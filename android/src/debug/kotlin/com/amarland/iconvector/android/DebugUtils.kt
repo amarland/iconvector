@@ -16,12 +16,10 @@
 
 package com.amarland.iconvector.android
 
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.*
-import kotlin.reflect.KClass
-import kotlin.reflect.full.declaredMemberProperties
+import com.amarland.iconvector.lib.toHexString
+import com.amarland.iconvector.lib.toSvgPathDataString
 
 internal fun ImageVector.asString() =
     buildString {
@@ -83,34 +81,8 @@ private fun VectorPath.writeTo(sb: StringBuilder, level: Int) {
             }
         }
         indent(mutableLevel)
-        append("pathData:")
-        pathData.joinTo(this, separator = " ", prefix = " ") { node ->
-            val (letter, values) = when (node) {
-                is PathNode.MoveTo ->
-                    'M' to PathNode.MoveTo::class.declaredMemberPropertyValues(node)
-                is PathNode.LineTo ->
-                    'L' to PathNode.LineTo::class.declaredMemberPropertyValues(node)
-                is PathNode.QuadTo ->
-                    'Q' to PathNode.QuadTo::class.declaredMemberPropertyValues(node)
-                is PathNode.CurveTo ->
-                    'C' to PathNode.CurveTo::class.declaredMemberPropertyValues(node)
-                is PathNode.ArcTo ->
-                    'A' to PathNode.ArcTo::class.declaredMemberPropertyValues(node)
-                else -> return@joinTo ""
-            }
-            values.joinToString(separator = " ", prefix = "$letter ") { value ->
-                if (value is Boolean) {
-                    if (value) "1" else "0"
-                } else "%.2f".format(value as Float)
-            }
-        }
-        appendLine()
+        appendLine("pathData: ${pathData.toSvgPathDataString(decimalPlaces = 2)}")
     }
 }
 
 private fun StringBuilder.indent(level: Int) = append(CharArray(level * 2) { ' ' })
-
-private fun Color.toHexString() = toArgb().toUInt().toString(16)
-
-private fun <T : Any> KClass<T>.declaredMemberPropertyValues(receiver: T) =
-    declaredMemberProperties.map { property -> property.get(receiver) }

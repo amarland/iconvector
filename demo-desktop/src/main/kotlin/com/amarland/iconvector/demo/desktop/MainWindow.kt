@@ -28,17 +28,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.singleWindowApplication
 import com.amarland.iconvector.desktop.iconVGResource
-import org.reflections.Reflections
-import org.reflections.scanners.Scanners
-import org.reflections.util.ConfigurationBuilder
+import okio.FileSystem
+import okio.Path
+import okio.Path.Companion.toPath
 
 @OptIn(ExperimentalUnsignedTypes::class)
 fun main() {
-    val ivgResources = Reflections(
-        ConfigurationBuilder()
-            .forPackages("com.amarland.iconvector.demo.desktop")
-            .addScanners(Scanners.Resources)
-    ).getResources(".*\\.ivg").toTypedArray()
+    val ivgResources = FileSystem.RESOURCES.list(".".toPath())
+        .filter { path -> path.name.endsWith(".ivg") }
+        .map(Path::name)
 
     singleWindowApplication(title = "IconVector Demo") {
         LazyColumn(

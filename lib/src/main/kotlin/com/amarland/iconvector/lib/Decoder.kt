@@ -35,7 +35,7 @@ import org.jetbrains.annotations.TestOnly
 
 class FormatException(message: String) : RuntimeException(message)
 
-interface RadialGradientCreator<S> {
+interface RadialGradientDelegateCreator<S> {
 
     fun create(
         colors: List<Color>,
@@ -61,7 +61,7 @@ class IconVGMachine {
     private val source: BufferedSource
     private var cursor = 0
 
-    private val radialGradientCreator: RadialGradientCreator<*>
+    private val radialGradientDelegateCreator: RadialGradientDelegateCreator<*>
 
     private lateinit var builder: ImageVector.Builder
 
@@ -99,18 +99,18 @@ class IconVGMachine {
         source: BufferedSource,
         height: Float = Float.POSITIVE_INFINITY,
         palette: List<Color>? = null,
-        radialGradientCreator: RadialGradientCreator<*>
+        radialGradientDelegateCreator: RadialGradientDelegateCreator<*>
     ) {
         require(palette == null || palette.size <= CREG_LENGTH) {
             "`palette` cannot store more than $CREG_LENGTH colors."
         }
 
         this.source = source
-        this.radialGradientCreator = radialGradientCreator
+        this.radialGradientDelegateCreator = radialGradientDelegateCreator
 
         checkSignature()
 
-        palette?.let(::applyCustomPalette)
+        palette?.takeUnless { it.isEmpty() }?.let(::applyCustomPalette)
 
         readMetadata()
 
@@ -142,7 +142,7 @@ class IconVGMachine {
     // used by tests only (through specific "factory" function)
     private constructor(source: BufferedSource, palette: List<Color>) {
         this.source = source
-        radialGradientCreator = object : RadialGradientCreator<Nothing> {
+        radialGradientDelegateCreator = object : RadialGradientDelegateCreator<Nothing> {
 
             override fun create(
                 colors: List<Color>, stops: List<Float>?,
@@ -236,7 +236,7 @@ class IconVGMachine {
                     this[0, 1] = 0F
                 } else invert()
             }
-            return radialGradientCreator.create(
+            return radialGradientDelegateCreator.create(
                 colors = List(NSTOPS) { i -> rgbaToColor(rawColors[i].toUInt()) },
                 stops.toList(),
                 center = Offset.Zero,

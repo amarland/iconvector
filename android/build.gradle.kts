@@ -47,11 +47,8 @@ android {
 }
 
 dependencies {
-    val kotlinVersion: String by rootProject.extra
-
     implementation("androidx.compose.ui:ui:$composeAndroidVersion")
     implementation("com.squareup.okio:okio:$okioVersion")
-    debugImplementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVersion")
 
     implementation(project(":lib"))
 }

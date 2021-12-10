@@ -16,7 +16,10 @@
 
 package com.amarland.iconvector.lib
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.PathNode
 
 internal fun IntArray.insert(index: Int, value: Int): IntArray {
     require(index in 0..size)
@@ -54,6 +57,10 @@ internal fun FloatArray.insert(index: Int, value: Float): FloatArray {
     }
 }
 
+fun Color.toHexString() =
+    '#' + ((alpha * (toArgb() and 0x00FFFFFF)).toUInt().toString(16)
+        .padStart(length = 6, padChar = '0'))
+
 internal val Matrix.determinant: Float
     get() {
         val a00 = this[0, 0]
@@ -86,3 +93,41 @@ internal val Matrix.determinant: Float
         val b11 = a22 * a33 - a23 * a32
         return b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06
     }
+
+fun Matrix.toMatrix33Values() =
+    floatArrayOf(
+        this[0, 0], this[0, 1], this[0, 3],
+        this[1, 0], this[1, 1], this[1, 3],
+        this[3, 0], this[3, 1], this[3, 3]
+    )
+
+fun Iterable<PathNode>.toSvgPathDataString(decimalPlaces: Int = Int.MAX_VALUE) =
+    buildString {
+        joinTo(this, separator = " ") { node ->
+            val (letter, values) = when (node) {
+                is PathNode.MoveTo ->
+                    'M' to PathNode.MoveTo::class.java.declaredFieldValues(node)
+                is PathNode.LineTo ->
+                    'L' to PathNode.LineTo::class.java.declaredFieldValues(node)
+                is PathNode.QuadTo ->
+                    'Q' to PathNode.QuadTo::class.java.declaredFieldValues(node)
+                is PathNode.CurveTo ->
+                    'C' to PathNode.CurveTo::class.java.declaredFieldValues(node)
+                is PathNode.ArcTo ->
+                    'A' to PathNode.ArcTo::class.java.declaredFieldValues(node)
+                else -> return@joinTo ""
+            }
+            values.joinToString(separator = " ", prefix = "$letter ") { value ->
+                if (value is Boolean) {
+                    if (value) "1" else "0"
+                } else if (decimalPlaces in 0..5) {
+                    "%.2f".format(value as Float)
+                } else {
+                    value.toString()
+                }
+            }
+        }
+    }
+
+private fun <T> Class<T>.declaredFieldValues(receiver: T) =
+    declaredFields.map { it.also { it.trySetAccessible() }.get(receiver) }

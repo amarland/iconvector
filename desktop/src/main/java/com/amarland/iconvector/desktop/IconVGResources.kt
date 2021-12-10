@@ -40,7 +40,7 @@ fun loadIconVGResource(resourcePath: String): ImageVector =
             ?.use { source ->
                 IconVGMachine(
                     source,
-                    radialGradientCreator = RadialGradientCreatorImpl
+                    radialGradientDelegateCreator = RadialGradientDelegateCreatorImpl
                 ).imageVector
             }
     ) { "Resource $resourcePath not found!" }
