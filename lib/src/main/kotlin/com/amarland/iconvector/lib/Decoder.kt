@@ -157,13 +157,10 @@ class IconVGMachine {
         }
     }
 
-    private val nextByte
-        get() =
-            if (!source.exhausted()) {
-                source.readByte().toUByte().also {
-                    cursor++
-                }
-            } else throw FormatException("Unexpected end of file at offset $cursor.")
+    private fun nextByte() =
+        if (!source.exhausted()) {
+            source.readByte().toUByte().also { cursor++ }
+        } else throw FormatException("Unexpected end of file at offset $cursor.")
 
     private fun rgbaToGradient(color: UInt): Brush {
         var NSTOPS = (color shr 24).toInt() and 0x3F
@@ -271,7 +268,7 @@ class IconVGMachine {
 
     // @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun decodeColor1(): UInt {
-        val byte1 = nextByte.toUInt()
+        val byte1 = nextByte().toUInt()
         if (byte1 >= 192U) {
             return CREG[(byte1 - 192U).toInt() % CREG_LENGTH]
         }
@@ -295,8 +292,8 @@ class IconVGMachine {
 
     // @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun decodeColor2(): UInt {
-        val byte1 = nextByte.toUInt()
-        val byte2 = nextByte.toUInt()
+        val byte1 = nextByte().toUInt()
+        val byte2 = nextByte().toUInt()
         return ((byte1 and 0xF0U) * 0x1100000U
                 + (byte1 and 0x0FU) * 0x110000U
                 + (byte2 and 0xF0U) * 0x110U
@@ -305,14 +302,14 @@ class IconVGMachine {
 
     // @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun decodeDirectColor3() =
-        ((nextByte.toUInt() shl 24)
-                + (nextByte.toUInt() shl 16)
-                + (nextByte.toUInt() shl 8)
+        ((nextByte().toUInt() shl 24)
+                + (nextByte().toUInt() shl 16)
+                + (nextByte().toUInt() shl 8)
                 + 0xFFU)
 
     // @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun decodeIndirectColor3(): UInt {
-        val byte1 = nextByte.toUInt()
+        val byte1 = nextByte().toUInt()
         val C0 = decodeColor1()
         val C1 = decodeColor1()
         val red = (((255U - byte1) * ((C0 and 0xFF000000U) shr 24))
@@ -328,88 +325,88 @@ class IconVGMachine {
 
     // @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun decodeColor4() =
-        ((nextByte.toUInt() shl 24)
-                + (nextByte.toUInt() shl 16)
-                + (nextByte.toUInt() shl 8)
-                + nextByte.toUInt())
+        ((nextByte().toUInt() shl 24)
+                + (nextByte().toUInt() shl 16)
+                + (nextByte().toUInt() shl 8)
+                + nextByte().toUInt())
 
     // @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun decodeNaturalNumber(): Int {
-        val byte1 = nextByte.toInt()
+        val byte1 = nextByte().toInt()
         if (byte1 and 0x01 == 0x00) {
             // 1-byte encoding
             return byte1 shr 1
         }
-        val byte2 = nextByte.toInt()
+        val byte2 = nextByte().toInt()
         if (byte1 and 0x02 == 0x00) {
             // 2-byte encoding
             return (byte1 shr 2) + (byte2 shl 6)
         }
         // 4-byte encoding
-        val byte3 = nextByte.toInt()
-        val byte4 = nextByte.toInt()
+        val byte3 = nextByte().toInt()
+        val byte4 = nextByte().toInt()
         return (byte1 shr 2) + (byte2 shl 6) + (byte3 shl 14) + (byte4 shl 22)
     }
 
     // @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun decodeRealNumber(): Float {
-        val byte1 = nextByte.toInt()
+        val byte1 = nextByte().toInt()
         if (byte1 and 0x01 == 0x00) {
             // 1-byte encoding (same as decodeNaturalNumber)
             return (byte1 shr 1).toFloat()
         }
-        val byte2 = nextByte.toInt()
+        val byte2 = nextByte().toInt()
         if (byte1 and 0x02 == 0x00) {
             // 2-byte encoding (same as decodeNaturalNumber)
             return ((byte1 shr 2) + (byte2 shl 6)).toFloat()
         }
         // 4-byte encoding (decodeNaturalNumber << 2, cast to float)
-        val byte3 = nextByte.toInt()
-        val byte4 = nextByte.toInt()
+        val byte3 = nextByte().toInt()
+        val byte4 = nextByte().toInt()
         return Float.fromBits((byte1 and 0xFC) + (byte2 shl 8) + (byte3 shl 16) + (byte4 shl 24))
     }
 
     // @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun decodeCoordinateNumber(): Float {
-        val byte1 = nextByte.toInt()
+        val byte1 = nextByte().toInt()
         if (byte1 and 0x01 == 0x00) {
             // 1-byte encoding (decodeRealNumber with a bias)
             return (byte1 shr 1) - 64F
         }
-        val byte2 = nextByte.toInt()
+        val byte2 = nextByte().toInt()
         if (byte1 and 0x02 == 0x00) {
             // 2-byte encoding (decodeRealNumber with a scale and a bias)
             return ((byte1 shr 2) + (byte2 shl 6)) / 64F - 128F
         }
         // 4-byte encoding (same as decodeRealNumber)
-        val byte3 = nextByte.toInt()
-        val byte4 = nextByte.toInt()
+        val byte3 = nextByte().toInt()
+        val byte4 = nextByte().toInt()
         return Float.fromBits((byte1 and 0xFC) + (byte2 shl 8) + (byte3 shl 16) + (byte4 shl 24))
     }
 
     // @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun decodeZeroToOneNumber(): Float {
-        val byte1 = nextByte.toInt()
+        val byte1 = nextByte().toInt()
         if (byte1 and 0x01 == 0x00) {
             // 1-byte encoding (decodeRealNumber with a bias)
             return (byte1 shr 1) / 120F
         }
-        val byte2 = nextByte.toInt()
+        val byte2 = nextByte().toInt()
         if (byte1 and 0x02 == 0x00) {
             // 2-byte encoding (decodeRealNumber with a scale and a bias)
             return ((byte1 shr 2) + (byte2 shl 6)) / 15120F
         }
         // 4-byte encoding (same as decodeRealNumber)
-        val byte3 = nextByte.toInt()
-        val byte4 = nextByte.toInt()
+        val byte3 = nextByte().toInt()
+        val byte4 = nextByte().toInt()
         return Float.fromBits((byte1 and 0xFC) + (byte2 shl 8) + (byte3 shl 16) + (byte4 shl 24))
     }
 
     private fun checkSignature() {
-        if (nextByte.toUInt() != 0x89U ||
-            nextByte.toUInt() != 0x49U ||
-            nextByte.toUInt() != 0x56U ||
-            nextByte.toUInt() != 0x47U
+        if (nextByte().toUInt() != 0x89U ||
+            nextByte().toUInt() != 0x49U ||
+            nextByte().toUInt() != 0x56U ||
+            nextByte().toUInt() != 0x47U
         ) {
             throw FormatException("Signature did not match IconVG signature.")
         }
@@ -460,7 +457,7 @@ class IconVGMachine {
                 }
                 // suggested palette
                 1 -> {
-                    val atLeastOneByte = nextByte.toInt()
+                    val atLeastOneByte = nextByte().toInt()
                     val N = atLeastOneByte and 0x3F // low six bits
                     val newPalette = when (N and 0xC0) {
                         // 1-byte colors
@@ -495,7 +492,7 @@ class IconVGMachine {
         var mode = RenderingMode.STYLING
         var lastOpcode = DrawingCommand.OTHER
         while (!source.exhausted()) {
-            val opcode = nextByte.toInt()
+            val opcode = nextByte().toInt()
             when (mode) {
                 RenderingMode.STYLING -> {
                     when {
