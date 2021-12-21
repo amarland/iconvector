@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.VectorGroup
 import androidx.compose.ui.graphics.vector.VectorPath
 import okio.Buffer
+import okio.FileSystem
 import okio.buffer
 import okio.source
 import org.apache.batik.anim.dom.SAXSVGDocumentFactory
@@ -35,7 +36,6 @@ import org.apache.batik.util.SVGConstants
 import org.apache.batik.util.XMLResourceDescriptor
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.fail
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
@@ -44,6 +44,7 @@ import org.w3c.dom.svg.SVGDocument
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.lang.management.ManagementFactory
 import javax.imageio.ImageIO
 import kotlin.math.roundToInt
 
@@ -238,16 +239,25 @@ class IconVGTest {
 
         val actualImageBytes = generatedSvgDocument.toPngBytes()
 
-        // File(okio.FileSystem.SYSTEM_TEMPORARY_DIRECTORY.toFile(), "actual.png")
-        //     .writeBytes(actualImageBytes)
+        val isDebuggerAttached = ManagementFactory.getRuntimeMXBean().inputArguments
+            .any { "jdwp=" in it && "suspend=n" !in it }
+        if (isDebuggerAttached) {
+            File(FileSystem.SYSTEM_TEMPORARY_DIRECTORY.toFile(), "actual.png").run {
+                writeBytes(actualImageBytes)
+                // add a breakpoint below to preview the temp file
+                delete()
+            }
+        }
 
         val expectedImage = ImageIO.read(ByteArrayInputStream(goldenSvgDocument.toPngBytes()))
         val actualImage = ImageIO.read(ByteArrayInputStream(actualImageBytes))
 
         for (x in 0 until width) {
             for (y in 0 until height) {
-                if (expectedImage.getRGB(x, y) != actualImage.getRGB(x, y))
-                    fail("The two images are different.")
+                Assertions.assertTrue(
+                    expectedImage.getRGB(x, y) == actualImage.getRGB(x, y),
+                    "The two images are different."
+                )
             }
         }
     }
