@@ -19,6 +19,11 @@ dependencies {
     implementation("com.squareup.okio:okio:$okioVersion")
 
     implementation(project(":lib"))
+    implementation(project(":lib")) {
+        capabilities {
+            requireCapability("com.amarland.iconvector:lib-compose-support")
+        }
+    }
 }
 
 tasks.withType<KotlinCompile>().all {

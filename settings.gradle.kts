@@ -18,4 +18,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "iconvector"
 
-include(":lib", ":android", ":demo-android", ":desktop", ":demo-desktop")
+include(":lib", ":android-compose", ":android-legacy", ":demo-android", ":desktop", ":demo-desktop")

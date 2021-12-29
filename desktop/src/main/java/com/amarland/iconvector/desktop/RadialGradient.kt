@@ -18,101 +18,99 @@
 package com.amarland.iconvector.desktop
 
 import androidx.compose.runtime.Immutable
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.*
-import com.amarland.iconvector.lib.AbstractRadialGradientDelegate
-import com.amarland.iconvector.lib.RadialGradientDelegateCreator
-import com.amarland.iconvector.lib.RadialGradientDelegateOwner
-import com.amarland.iconvector.lib.toMatrix33Values
+import androidx.compose.ui.geometry.*
+import androidx.compose.ui.graphics.ShaderBrush
+import com.amarland.iconvector.lib.IconVGIntermediateRepresentation as IR
 import org.jetbrains.skia.FilterTileMode
 import org.jetbrains.skia.GradientStyle
 import org.jetbrains.skia.Matrix33
 import org.jetbrains.skia.Shader
 
+// Copy of https://cs.android.com/androidx/platform/frameworks/support/+/1ac23550d12fc382ce65f7207c9fd89abe6afa62:compose/ui/ui-graphics/src/commonMain/kotlin/androidx/compose/ui/graphics/Brush.kt;l=505,
+// but modified to add the ability to specify a transform matrix.
 @Immutable
-internal class RadialGradientDelegate(
-    colors: List<Color>,
-    stops: List<Float>? = null,
-    center: Offset,
-    radius: Float,
-    tileMode: TileMode = TileMode.Clamp,
-    matrix: Matrix
-) : AbstractRadialGradientDelegate<Shader>(
-    colors,
-    stops,
-    center,
-    radius,
-    tileMode,
-    matrix
-) {
+class RadialGradient internal constructor(
+    private val colors: IntArray,
+    private val stops: FloatArray? = null,
+    private val center: Offset,
+    private val radius: Float,
+    private val tileMode: IR.TileMode = IR.TileMode.CLAMP,
+    private val matrix: IR.Matrix = IR.Matrix()
+) : ShaderBrush() {
 
-    override fun createShaderInternal(
-        colors: List<Color>,
-        stops: List<Float>?,
-        center: Offset,
-        radius: Float,
-        tileMode: TileMode,
-        matrix: Matrix
-    ) = Shader.makeRadialGradient(
-        center.x,
-        center.y,
-        radius,
-        IntArray(colors.size) { i -> colors[i].toArgb() },
-        stops?.toFloatArray(),
-        GradientStyle(
-            tileMode.toSkiaTileMode(),
-            isPremul = true,
-            Matrix33(*matrix.toMatrix33Values())
+    override val intrinsicSize: Size
+        get() = if (radius.isFinite()) Size(radius * 2, radius * 2) else Size.Unspecified
+
+    override fun createShader(size: Size): Shader {
+        val centerX: Float
+        val centerY: Float
+        if (center.isUnspecified) {
+            val drawCenter = size.center
+            centerX = drawCenter.x
+            centerY = drawCenter.y
+        } else {
+            centerX = if (center.x == Float.POSITIVE_INFINITY) size.width else center.x
+            centerY = if (center.y == Float.POSITIVE_INFINITY) size.height else center.y
+        }
+
+        return Shader.makeRadialGradient(
+            centerX,
+            centerY,
+            radius,
+            colors,
+            stops,
+            GradientStyle(
+                when (tileMode) {
+                    IR.TileMode.REPEAT -> FilterTileMode.REPEAT
+                    IR.TileMode.MIRROR -> FilterTileMode.MIRROR
+                    else -> FilterTileMode.CLAMP
+                },
+                isPremul = true,
+                Matrix33(
+                    // row-major order
+                    matrix[IR.Matrix.INDEX_SCALE_X],
+                    matrix[IR.Matrix.INDEX_SKEW_X],
+                    matrix[IR.Matrix.INDEX_TRANSLATE_X],
+                    matrix[IR.Matrix.INDEX_SKEW_Y],
+                    matrix[IR.Matrix.INDEX_SCALE_Y],
+                    matrix[IR.Matrix.INDEX_TRANSLATE_Y],
+                    0F, 0F, 1F
+                )
+            )
         )
-    )
-
-    override fun asBrush() = ActualRadialGradient(this)
-
-    companion object {
-
-        @JvmStatic
-        private fun TileMode.toSkiaTileMode() =
-            when (this) {
-                TileMode.Repeated -> FilterTileMode.REPEAT
-                TileMode.Mirror -> FilterTileMode.MIRROR
-                TileMode.Decal -> FilterTileMode.DECAL
-                else -> FilterTileMode.CLAMP
-            }
     }
-}
 
-@Immutable
-internal class ActualRadialGradient(
-    override val delegate: RadialGradientDelegate
-) : ShaderBrush(), RadialGradientDelegateOwner<Shader> {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is RadialGradient) return false
 
-    override val intrinsicSize = delegate.intrinsicSize
+        if (!colors.contentEquals(other.colors)) return false
+        if (stops?.contentEquals(other.stops) == false) return false
+        if (center != other.center) return false
+        if (radius != other.radius) return false
+        if (tileMode.value != other.tileMode.value) return false
 
-    override fun createShader(size: Size) = delegate.createShader(size)
+        return true
+    }
 
-    override fun equals(other: Any?) = delegate == other
+    override fun hashCode(): Int {
+        var result = colors.hashCode()
+        result = 31 * result + (stops?.hashCode() ?: 0)
+        result = 31 * result + center.hashCode()
+        result = 31 * result + radius.hashCode()
+        result = 31 * result + tileMode.value.hashCode()
+        return result
+    }
 
-    override fun hashCode() = delegate.hashCode()
-
-    override fun toString() = delegate.toString()
-}
-
-internal object RadialGradientDelegateCreatorImpl : RadialGradientDelegateCreator<Shader> {
-
-    override fun create(
-        colors: List<Color>,
-        stops: List<Float>?,
-        center: Offset,
-        radius: Float,
-        tileMode: TileMode,
-        matrix: Matrix
-    ) = RadialGradientDelegate(
-        colors,
-        stops,
-        center,
-        radius,
-        tileMode,
-        matrix
-    )
+    override fun toString(): String {
+        val centerValue = if (center.isSpecified) "center=$center, " else ""
+        val radiusValue = if (radius.isFinite()) "radius=$radius, " else ""
+        return "RadialGradient(" +
+                "colors=$colors, " +
+                "stops=$stops, " +
+                centerValue +
+                radiusValue +
+                "tileMode=$tileMode, " +
+                "matrix=${matrix.values})"
+    }
 }

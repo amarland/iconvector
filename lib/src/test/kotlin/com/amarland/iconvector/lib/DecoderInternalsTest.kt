@@ -17,7 +17,6 @@
 
 package com.amarland.iconvector.lib
 
-import androidx.compose.ui.graphics.Color
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -56,8 +55,8 @@ class DecoderInternalsTest {
             0x41U, 0x1AU,
             0x63U, 0x0BU, 0x36U, 0x3BU
         ).toByteArray()
-        val palette = List(IconVGMachine.CREG_LENGTH) { index ->
-            Color(0xFF000000 + (2 * index + 1))
+        val palette = UIntArray(IconVGMachine.CREG_LENGTH) { index ->
+            (0xFF000000U + (2 * index + 1).toUInt())
         }
 
         val testMachine = IconVGMachine.testInstance(bytes, palette)

@@ -1,3 +1,4 @@
+import org.jetbrains.compose.compose
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
@@ -5,20 +6,37 @@ plugins {
     kotlin("jvm")
 }
 
-group = "com.amarland"
+group = "com.amarland.iconvector"
 version = "0.1"
+
+sourceSets {
+    create("composeSupport") {
+        val mainSourceSetOutput = sourceSets["main"].output
+        compileClasspath += mainSourceSetOutput
+        runtimeClasspath += mainSourceSetOutput
+        java {
+            srcDir("src/compose/kotlin")
+        }
+    }
+}
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
+
+    registerFeature("composeSupport") {
+        usingSourceSet(sourceSets["composeSupport"])
+        capability("com.amarland.iconvector", "lib-compose-support", "0.1")
+    }
 }
 
-val composeJbVersion: String by rootProject.extra
 val okioVersion: String by rootProject.extra
 
 dependencies {
-    implementation("org.jetbrains.compose.ui:ui:$composeJbVersion")
     implementation("com.squareup.okio:okio:$okioVersion")
+
+    "composeSupportImplementation"(compose.ui)
+    // implementation(compose.ui) // uncomment (temporarily) to get rid of errors in the IDE
 
     val batikVersion = "1.14"
 

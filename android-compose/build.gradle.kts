@@ -1,9 +1,10 @@
 plugins {
-    id("com.android.application")
+    id("com.android.library")
     kotlin("android")
 }
 
 val composeAndroidVersion: String by rootProject.extra
+val okioVersion: String by rootProject.extra
 val androidMinSdkVersion: Int by rootProject.extra
 val androidTargetSdkVersion: Int by rootProject.extra
 val androidCompileSdkVersion: Int by rootProject.extra
@@ -12,11 +13,22 @@ android {
     compileSdk = androidCompileSdkVersion
 
     defaultConfig {
-        applicationId = "com.amarland.iconvector.demo.android"
         minSdk = androidMinSdkVersion
         targetSdk = androidTargetSdkVersion
-        versionCode = 1
-        versionName = "0.1"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
+    }
+
+    buildTypes {
+        debug {}
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
     }
 
     compileOptions {
@@ -28,7 +40,6 @@ android {
         languageVersion = "1.5"
         apiVersion = "1.5"
         jvmTarget = "${JavaVersion.VERSION_1_8}"
-        freeCompilerArgs = freeCompilerArgs + "-Xopt-in=kotlin.RequiresOptIn"
     }
 
     buildFeatures.compose = true
@@ -36,10 +47,13 @@ android {
 }
 
 dependencies {
-    implementation("com.google.android.material:material:1.4.0")
     implementation("androidx.compose.ui:ui:$composeAndroidVersion")
-    implementation("androidx.compose.material:material:$composeAndroidVersion")
-    implementation("androidx.activity:activity-compose:1.4.0")
-    implementation(project(":android-compose"))
-    implementation(project(":android-legacy"))
+    implementation("com.squareup.okio:okio:$okioVersion")
+
+    implementation(project(":lib"))
+    implementation(project(":lib")) {
+        capabilities {
+            requireCapability("com.amarland.iconvector:lib-compose-support")
+        }
+    }
 }

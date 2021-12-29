@@ -22,30 +22,12 @@
 
 package com.amarland.iconvector.lib
 
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.vector.DefaultTranslationX
-import androidx.compose.ui.graphics.vector.DefaultTranslationY
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.PathNode
-import androidx.compose.ui.unit.dp
 import okio.Buffer
 import okio.BufferedSource
 import org.jetbrains.annotations.TestOnly
+import com.amarland.iconvector.lib.IconVGIntermediateRepresentation as IR
 
 class FormatException(message: String) : RuntimeException(message)
-
-interface RadialGradientDelegateCreator<S> {
-
-    fun create(
-        colors: List<Color>,
-        stops: List<Float>? = null,
-        center: Offset,
-        radius: Float,
-        tileMode: TileMode = TileMode.Clamp,
-        matrix: Matrix
-    ): AbstractRadialGradientDelegate<S>
-}
 
 /*
  * The class below is a rather direct translation of:
@@ -61,17 +43,8 @@ class IconVGMachine {
     private val source: BufferedSource
     private var cursor = 0
 
-    private val radialGradientDelegateCreator: RadialGradientDelegateCreator<*>
-
-    private lateinit var builder: ImageVector.Builder
-
-    private var _imageVector: ImageVector? = null
-    val imageVector
-        get() =
-            _imageVector ?: builder.build()
-                .also { builtImageVector ->
-                    _imageVector = builtImageVector
-                }
+    // neither set nor used by test instances
+    lateinit var intermediateRepresentation: IR private set
 
     private var minX = -32F
     private var maxX = 32F
@@ -87,7 +60,8 @@ class IconVGMachine {
     // @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal val CREG = UIntArray(CREG_LENGTH) { 0x000000FFU }
     private val NREG = FloatArray(NREG_LENGTH)
-    private val H: Float
+
+    private val viewportHeight: Float
 
     private var CSEL = 0
     private var NSEL = 0
@@ -97,16 +71,13 @@ class IconVGMachine {
 
     constructor(
         source: BufferedSource,
-        height: Float = Float.POSITIVE_INFINITY,
-        palette: List<Color>? = null,
-        radialGradientDelegateCreator: RadialGradientDelegateCreator<*>
+        palette: UIntArray? = null
     ) {
         require(palette == null || palette.size <= CREG_LENGTH) {
             "`palette` cannot store more than $CREG_LENGTH colors."
         }
 
         this.source = source
-        this.radialGradientDelegateCreator = radialGradientDelegateCreator
 
         checkSignature()
 
@@ -119,38 +90,21 @@ class IconVGMachine {
         }
 
         val viewportWidth = maxX - minX
-        val viewportHeight = maxY - minY
-        H = if (height.isFinite()) height else viewportHeight
-        builder = ImageVector.Builder(
-            defaultWidth = (H / viewportHeight * viewportWidth).dp,
-            defaultHeight = H.dp,
-            viewportWidth = viewportWidth,
-            viewportHeight = viewportHeight
+        viewportHeight = maxY - minY
+        intermediateRepresentation = IR(
+            viewportWidth,
+            viewportHeight,
+            translationX = if (minX < 0) -minX else 0F,
+            translationY = if (minY < 0) -minY else 0F
         )
-        val isMinXNegative = minX < 0
-        val isMinYNegative = minY < 0
-        if (isMinXNegative || isMinYNegative) {
-            builder.addGroup(
-                translationX = if (isMinXNegative) -minX else DefaultTranslationX,
-                translationY = if (isMinYNegative) -minY else DefaultTranslationY
-            )
-        }
 
         execute()
     }
 
     // used by tests only (through specific "factory" function)
-    private constructor(source: BufferedSource, palette: List<Color>) {
-        this.source = source
-        radialGradientDelegateCreator = object : RadialGradientDelegateCreator<Nothing> {
-
-            override fun create(
-                colors: List<Color>, stops: List<Float>?,
-                center: Offset, radius: Float,
-                tileMode: TileMode, matrix: Matrix
-            ) = throw UnsupportedOperationException()
-        }
-        H = 0F
+    private constructor(bytes: ByteArray, palette: UIntArray) {
+        this.source = Buffer().write(bytes)
+        viewportHeight = 0F
         applyCustomPalette(palette)
         customPalette.forEachIndexed { index, color ->
             CREG[index] = color
@@ -162,18 +116,13 @@ class IconVGMachine {
             source.readByte().toUByte().also { cursor++ }
         } else throw FormatException("Unexpected end of file at offset $cursor.")
 
-    private fun rgbaToGradient(color: UInt): Brush {
-        var NSTOPS = (color shr 24).toInt() and 0x3F
-        val CBASE = (color shr 16).toInt() and 0x3F
-        val tileMode = when (color and 0x00C00000U) {
-            0x00000000U, // none => default value for gradients in Compose
-            0x00400000U -> TileMode.Clamp // pad
-            0x00800000U -> TileMode.Mirror // reflect
-            0x00C00000U -> TileMode.Repeated // repeat
-            else -> throw IllegalStateException("unreachable")
-        }
-        val NBASE = (color shr 8).toInt() and 0x3F
-        val isRadial = (color and 0x00004000U) == 0x00004000U
+    private fun rgbaToGradient(color: UInt): IR.Path.Fill {
+        val colorAsInt = color.toInt()
+        var NSTOPS = colorAsInt shr 24 and 0x3F
+        val CBASE = colorAsInt shr 16 and 0x3F
+        val tileMode = colorAsInt and 0x00C00000
+        val NBASE = colorAsInt shr 8 and 0x3F
+        val isRadial = colorAsInt and 0x00004000 == 0x00004000
         // "color stops" in IconVG
         val rawColors = IntArray(NSTOPS) { index -> CREG[(CBASE + index) % CREG_LENGTH].toInt() }
         // "offset stops" in IconVG
@@ -219,28 +168,26 @@ class IconVGMachine {
         val f = NREG[(NBASE - 1) % NREG_LENGTH]
 
         if (isRadial) {
-            val matrix = Matrix().apply {
-                this[0, 0] = a
-                this[0, 1] = d
-                this[1, 0] = b
-                this[1, 1] = e
-                this[3, 0] = c
-                this[3, 1] = f
-                if (determinant == 0F) {
-                    this[0, 0] = 0F
-                    this[0, 1] = 0F
-                    this[1, 0] = 0F
-                    this[0, 1] = 0F
-                } else invert()
+            val matrix = IR.Matrix().apply {
+                this[IR.Matrix.INDEX_SCALE_X] = a
+                this[IR.Matrix.INDEX_SKEW_Y] = d
+                this[IR.Matrix.INDEX_SKEW_X] = b
+                this[IR.Matrix.INDEX_SCALE_Y] = e
+                this[IR.Matrix.INDEX_TRANSLATE_X] = c
+                this[IR.Matrix.INDEX_TRANSLATE_Y] = f
+                if (!tryInverse()) {
+                    this[IR.Matrix.INDEX_SCALE_X] = 0F
+                    this[IR.Matrix.INDEX_SKEW_Y] = 0F
+                    this[IR.Matrix.INDEX_SKEW_X] = 0F
+                    this[IR.Matrix.INDEX_SCALE_Y] = 0F
+                }
             }
-            return radialGradientDelegateCreator.create(
-                colors = List(NSTOPS) { i -> rgbaToColor(rawColors[i].toUInt()) },
-                stops.toList(),
-                center = Offset.Zero,
-                radius = 1F,
-                tileMode,
+            return IR.Path.Fill.RadialGradient(
+                colors = IntArray(NSTOPS) { i -> rgbaToArgb(rawColors[i].toUInt()).toInt() },
+                stops,
+                IR.TileMode(tileMode),
                 matrix
-            ).asBrush()
+            )
         }
 
         val x1: Float
@@ -258,11 +205,14 @@ class IconVGMachine {
             dx = 2e9F
             dy = 2e9F
         }
-        return Brush.linearGradient(
-            colorStops = Array(NSTOPS) { i -> stops[i] to rgbaToColor(rawColors[i].toUInt()) },
-            start = Offset(x1, y1),
-            end = Offset(x1 + dx, y1 + dy),
-            tileMode
+        return IR.Path.Fill.LinearGradient(
+            colors = IntArray(NSTOPS) { i -> rgbaToArgb(rawColors[i].toUInt()).toInt() },
+            stops,
+            startX = x1,
+            startY = y1,
+            endX = x1 + dx,
+            endY = y1 + dy,
+            IR.TileMode(tileMode)
         )
     }
 
@@ -412,9 +362,9 @@ class IconVGMachine {
         }
     }
 
-    private fun applyCustomPalette(palette: List<Color>) {
+    private fun applyCustomPalette(palette: UIntArray) {
         palette.forEachIndexed { index, color ->
-            customPalette[index] = colorToRgba(color).takeUnless(::isNonColor) ?: 0x000000FFU
+            customPalette[index] = argbToRgba(color).takeUnless(::isNonColor) ?: 0x000000FFU
         }
         foundPalette = true
     }
@@ -487,8 +437,8 @@ class IconVGMachine {
         var y = 0F
         var cx = 0F
         var cy = 0F
-        val pathNodes = mutableListOf<PathNode>()
-        var brush: Brush? = null
+        val pathSegments = mutableListOf<IR.Path.Segment>()
+        var fill: IR.Path.Fill? = null
         var mode = RenderingMode.STYLING
         var lastOpcode = DrawingCommand.OTHER
         while (!source.exhausted()) {
@@ -559,16 +509,16 @@ class IconVGMachine {
                             mode = RenderingMode.DRAWING
                             x = decodeCoordinateNumber()
                             y = decodeCoordinateNumber()
-                            pathNodes.run {
+                            pathSegments.run {
                                 clear()
-                                add(PathNode.MoveTo(x, y))
+                                add(IR.Path.Segment(IR.Path.Command.MOVE_TO, x, y))
                             }
                             lastOpcode = DrawingCommand.OTHER
                             val color = CREG[(CSEL - (opcode and 0x07)) % CREG_LENGTH]
-                            brush = if (isGradient(color)) {
+                            fill = if (isGradient(color)) {
                                 rgbaToGradient(color)
                             } else {
-                                SolidColor(rgbaToColor(color))
+                                IR.Path.Fill.Color(rgbaToArgb(color))
                             }
                         }
                         opcode <= 0xC7 -> {
@@ -591,7 +541,7 @@ class IconVGMachine {
                                     x += decodeCoordinateNumber()
                                     y += decodeCoordinateNumber()
                                 }
-                                pathNodes += PathNode.LineTo(x, y)
+                                pathSegments.add(IR.Path.Segment(IR.Path.Command.LINE_TO, x, y))
                             }
                             lastOpcode = DrawingCommand.OTHER
                         }
@@ -611,7 +561,9 @@ class IconVGMachine {
                                     x += decodeCoordinateNumber()
                                     y += decodeCoordinateNumber()
                                 }
-                                pathNodes += PathNode.QuadTo(cx, cy, x, y)
+                                pathSegments.add(
+                                    IR.Path.Segment(IR.Path.Command.QUAD_TO, cx, cy, x, y)
+                                )
                             }
                             lastOpcode = DrawingCommand.QUADRATIC
                         }
@@ -629,7 +581,9 @@ class IconVGMachine {
                                     x += decodeCoordinateNumber()
                                     y += decodeCoordinateNumber()
                                 }
-                                pathNodes += PathNode.QuadTo(cx, cy, x, y)
+                                pathSegments.add(
+                                    IR.Path.Segment(IR.Path.Command.QUAD_TO, cx, cy, x, y)
+                                )
                             }
                             lastOpcode = DrawingCommand.QUADRATIC
                         }
@@ -653,7 +607,11 @@ class IconVGMachine {
                                     x += decodeCoordinateNumber()
                                     y += decodeCoordinateNumber()
                                 }
-                                pathNodes += PathNode.CurveTo(cx1, cy1, cx, cy, x, y)
+                                pathSegments.add(
+                                    IR.Path.Segment(
+                                        IR.Path.Command.CUBIC_TO, cx1, cy1, cx, cy, x, y
+                                    )
+                                )
                             }
                             lastOpcode = DrawingCommand.CUBIC
                         }
@@ -677,7 +635,11 @@ class IconVGMachine {
                                     x += decodeCoordinateNumber()
                                     y += decodeCoordinateNumber()
                                 }
-                                pathNodes += PathNode.CurveTo(cx1, cy1, cx, cy, x, y)
+                                pathSegments.add(
+                                    IR.Path.Segment(
+                                        IR.Path.Command.CUBIC_TO, cx1, cy1, cx, cy, x, y
+                                    )
+                                )
                             }
                             lastOpcode = DrawingCommand.CUBIC
                         }
@@ -688,8 +650,8 @@ class IconVGMachine {
                                 val ry = decodeCoordinateNumber()
                                 val angle = decodeZeroToOneNumber() * 360
                                 val flags = decodeNaturalNumber()
-                                val largeArc = flags and 0x01 > 0
-                                val clockwise = flags and 0x02 > 0
+                                val largeArc = (flags and 0x01).toFloat()
+                                val clockwise = (flags and 0x02).toFloat()
                                 if (absolute) {
                                     x = decodeCoordinateNumber()
                                     y = decodeCoordinateNumber()
@@ -697,14 +659,15 @@ class IconVGMachine {
                                     x += decodeCoordinateNumber()
                                     y += decodeCoordinateNumber()
                                 }
-                                pathNodes += PathNode.ArcTo(
-                                    horizontalEllipseRadius = rx,
-                                    verticalEllipseRadius = ry,
-                                    theta = angle,
-                                    isMoreThanHalf = largeArc,
-                                    isPositiveArc = clockwise,
-                                    arcStartX = x,
-                                    arcStartY = y
+                                pathSegments.add(
+                                    IR.Path.Segment(
+                                        IR.Path.Command.ARC_TO,
+                                        rx, ry,
+                                        angle,
+                                        largeArc,
+                                        clockwise,
+                                        x, y
+                                    )
                                 )
                             }
                             lastOpcode = DrawingCommand.OTHER
@@ -713,11 +676,14 @@ class IconVGMachine {
                             throw FormatException("Unexpected reserved opcode $opcode.")
                         opcode <= 0xE1 -> {
                             lastOpcode = DrawingCommand.OTHER
-                            if (H in LOD0..LOD1) {
-                                builder.addPath(pathNodes.toList(), fill = brush)
+                            // TODO: is this check still relevant now that `H` is gone?
+                            if (viewportHeight in LOD0..LOD1) {
+                                // make an immutable copy of the mutable list
+                                val segments = pathSegments.toList()
+                                intermediateRepresentation._paths.add(IR.Path(segments, fill))
                             }
                             mode = RenderingMode.STYLING
-                            brush = null
+                            fill = null
                         }
                         opcode <= 0xE3 -> {
                             val absolute = opcode <= 0xE2
@@ -728,7 +694,7 @@ class IconVGMachine {
                                 x += decodeCoordinateNumber()
                                 y += decodeCoordinateNumber()
                             }
-                            pathNodes += PathNode.MoveTo(x, y)
+                            pathSegments.add(IR.Path.Segment(IR.Path.Command.MOVE_TO, x, y))
                             lastOpcode = DrawingCommand.OTHER
                         }
                         opcode <= 0xE5 ->
@@ -740,7 +706,7 @@ class IconVGMachine {
                             } else {
                                 x += decodeCoordinateNumber()
                             }
-                            pathNodes += PathNode.LineTo(x, y)
+                            pathSegments.add(IR.Path.Segment(IR.Path.Command.LINE_TO, x, y))
                             lastOpcode = DrawingCommand.OTHER
                         }
                         opcode <= 0xE9 -> {
@@ -750,7 +716,7 @@ class IconVGMachine {
                             } else {
                                 y += decodeCoordinateNumber()
                             }
-                            pathNodes += PathNode.LineTo(x, y)
+                            pathSegments.add(IR.Path.Segment(IR.Path.Command.LINE_TO, x, y))
                             lastOpcode = DrawingCommand.OTHER
                         }
                         else -> throw FormatException("Unexpected reserved opcode $opcode.")
@@ -764,8 +730,7 @@ class IconVGMachine {
 
         @JvmStatic
         @TestOnly
-        fun testInstance(bytes: ByteArray, palette: List<Color>) =
-            IconVGMachine(Buffer().write(bytes), palette)
+        fun testInstance(bytes: ByteArray, palette: UIntArray) = IconVGMachine(bytes, palette)
 
         const val CREG_LENGTH = 64
         private const val NREG_LENGTH = 64
@@ -773,27 +738,26 @@ class IconVGMachine {
         private val BYTE1_DECODER_RING = uintArrayOf(0x00U, 0x40U, 0x80U, 0xC0U, 0xFFU)
 
         @JvmStatic
-        private fun colorToRgba(color: Color): UInt {
-            val value = color.toArgb().toUInt()
-            val alpha = value shr 24
-            val red = (((value and 0x00FF0000U) shr 16) * alpha) / 255U
-            val green = (((value and 0x0000FF00U) shr 8) * alpha) / 255U
-            val blue = ((value and 0x000000FFU) * alpha) / 255U
+        private fun argbToRgba(argb: UInt): UInt {
+            val alpha = argb shr 24
+            val red = (((argb and 0x00FF0000U) shr 16) * alpha) / 255U
+            val green = (((argb and 0x0000FF00U) shr 8) * alpha) / 255U
+            val blue = ((argb and 0x000000FFU) * alpha) / 255U
             return (red shl 24) + (green shl 16) + (blue shl 8) + alpha
         }
 
         @JvmStatic
-        private fun rgbaToColor(color: UInt): Color {
-            val alpha = color and 0x000000FFU
+        private fun rgbaToArgb(rgba: UInt): UInt {
+            val alpha = rgba and 0x000000FFU
             if (alpha == 0x00U) {
                 // We sometimes (for gradients) add in real color to the zero-alpha colors.
                 // These don't need to be un-multiplied further, they're already un-multiplied.
-                return Color((color.toLong() and 0xFFFFFF00) shr 8)
+                return (rgba and 0xFFFFFF00U) shr 8
             }
-            val red = ((color and 0xFF000000U) shr 24) * 255U / alpha
-            val green = ((color and 0x00FF0000U) shr 16) * 255U / alpha
-            val blue = ((color and 0x0000FF00U) shr 8) * 255U / alpha
-            return Color(((alpha shl 24) + (red shl 16) + (green shl 8) + blue).toLong())
+            val red = ((rgba and 0xFF000000U) shr 24) * 255U / alpha
+            val green = ((rgba and 0x00FF0000U) shr 16) * 255U / alpha
+            val blue = ((rgba and 0x0000FF00U) shr 8) * 255U / alpha
+            return (alpha shl 24) + (red shl 16) + (green shl 8) + blue
         }
 
         @JvmStatic

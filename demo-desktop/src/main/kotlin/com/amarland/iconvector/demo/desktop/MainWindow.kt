@@ -16,13 +16,14 @@
 
 package com.amarland.iconvector.demo.desktop
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.GridCells
+import androidx.compose.foundation.lazy.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -30,7 +31,10 @@ import androidx.compose.ui.window.singleWindowApplication
 import com.amarland.iconvector.desktop.iconVGResource
 import java.io.File
 
-@OptIn(ExperimentalUnsignedTypes::class)
+@OptIn(
+    ExperimentalUnsignedTypes::class,
+    ExperimentalFoundationApi::class
+)
 fun main() {
     val ivgResources = Thread.currentThread().contextClassLoader
         .getResources("").toList()
@@ -39,16 +43,18 @@ fun main() {
         .list()?.filter { path -> path.endsWith(".ivg") }.orEmpty()
 
     singleWindowApplication(title = "IconVector Demo") {
-        LazyColumn(
+        val itemSize = 96.dp
+        LazyVerticalGrid(
+            cells = GridCells.Adaptive(itemSize),
             contentPadding = PaddingValues(all = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(ivgResources) { path ->
                 Image(
                     imageVector = ImageVector.iconVGResource(path),
                     contentDescription = null,
-                    modifier = Modifier.size(96.dp)
+                    modifier = Modifier.size(itemSize)
                 )
             }
         }

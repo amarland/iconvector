@@ -14,14 +14,18 @@
  * limitations under the License.
  */
 
-package com.amarland.iconvector.desktop
+package com.amarland.iconvector.androidcompose
 
+import android.content.res.Resources
+import android.util.Log
+import androidx.annotation.RawRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import com.amarland.iconvector.lib.FormatException
 import com.amarland.iconvector.lib.IconVGMachine
 import com.amarland.iconvector.lib.toImageVector
@@ -31,33 +35,40 @@ import okio.source
 @Composable
 @ExperimentalUnsignedTypes
 fun ImageVector.Companion.iconVGResource(
-    resourcePath: String,
+    @RawRes id: Int,
     palette: List<Color> = emptyList()
-) = remember(resourcePath) { loadIconVGResource(resourcePath, palette) }
+) = with(LocalContext.current) {
+    remember(id) {
+        loadIconVGResource(resources, id, palette)
+    }
+}
 
 @ExperimentalUnsignedTypes
 @Throws(FormatException::class)
 fun loadIconVGResource(
-    resourcePath: String,
+    resources: Resources,
+    id: Int,
     palette: List<Color> = emptyList()
 ): ImageVector =
-    requireNotNull(
-        Thread.currentThread().contextClassLoader.getResourceAsStream(resourcePath)
-            ?.source()?.buffer()
-            ?.use { source ->
-                IconVGMachine(
-                    source,
-                    UIntArray(palette.size) { index -> palette[index].toArgb().toUInt() }
-                ).intermediateRepresentation
-                    .toImageVector { intermediateRepresentation ->
-                        RadialGradient(
-                            intermediateRepresentation.colors,
-                            intermediateRepresentation.stops,
-                            center = Offset.Zero,
-                            radius = 1F,
-                            intermediateRepresentation.tileMode,
-                            intermediateRepresentation.matrix
-                        )
+    resources.openRawResource(id)
+        .source().buffer()
+        .use { source ->
+            IconVGMachine(
+                source,
+                UIntArray(palette.size) { index -> palette[index].toArgb().toUInt() }
+            ).intermediateRepresentation
+                .toImageVector { expectation ->
+                    RadialGradient(
+                        expectation.colors,
+                        expectation.stops,
+                        center = Offset.Zero,
+                        radius = 1F,
+                        expectation.tileMode,
+                        expectation.matrix
+                    )
+                }.also { imageVector: ImageVector ->
+                    if (BuildConfig.DEBUG) {
+                        Log.d("loadIconVGResource", imageVector.asString())
                     }
-            }
-    ) { "Resource $resourcePath not found!" }
+                }
+        }

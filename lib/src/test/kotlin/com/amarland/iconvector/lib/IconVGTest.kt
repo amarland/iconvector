@@ -17,12 +17,6 @@
 
 package com.amarland.iconvector.lib
 
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.VectorGroup
-import androidx.compose.ui.graphics.vector.VectorPath
 import okio.Buffer
 import okio.FileSystem
 import okio.buffer
@@ -47,6 +41,7 @@ import java.io.File
 import java.lang.management.ManagementFactory
 import javax.imageio.ImageIO
 import kotlin.math.roundToInt
+import com.amarland.iconvector.lib.IconVGIntermediateRepresentation as IR
 
 class IconVGTest {
 
@@ -54,10 +49,7 @@ class IconVGTest {
     @MethodSource("provideInvalidByteSequences")
     fun creationFromSimpleInvalidByteSequencesThrows(bytes: ByteArray) {
         Assertions.assertThrowsExactly(FormatException::class.java) {
-            IconVGMachine(
-                source = Buffer().write(bytes),
-                radialGradientDelegateCreator = RADIAL_GRADIENT_DELEGATE_CREATOR
-            )
+            IconVGMachine(Buffer().write(bytes))
         }
     }
 
@@ -65,10 +57,9 @@ class IconVGTest {
     fun blankFileCreationDoesNotThrow() {
         Assertions.assertDoesNotThrow {
             IconVGMachine(
-                source = Buffer().write(
+                Buffer().write(
                     byteArrayOf(0x89U.toByte(), 0x49, 0x56, 0x47, 0x00)
-                ),
-                radialGradientDelegateCreator = RADIAL_GRADIENT_DELEGATE_CREATOR
+                )
             )
         }
     }
@@ -78,13 +69,12 @@ class IconVGTest {
     fun compareWithGoldenFiles(
         sourceFile: File,
         goldenSvgDocument: SVGDocument,
-        palette: List<Color>
+        palette: IntArray // JUnit is Java, it doesn't play nice with unsigned types
     ) {
         IconVGMachine(
             sourceFile.source().buffer(),
-            palette = palette,
-            radialGradientDelegateCreator = RADIAL_GRADIENT_DELEGATE_CREATOR
-        ).imageVector.assertMatchesGoldenSvgDocument(goldenSvgDocument)
+            palette = palette.toUIntArray()
+        ).intermediateRepresentation.assertMatchesGoldenSvgDocument(goldenSvgDocument)
     }
 
     companion object {
@@ -131,9 +121,9 @@ class IconVGTest {
                     "action-info.lo-res"
                 ).flatMap { fileName ->
                     arrayOf(
-                        emptyList(),
-                        listOf(Color(0xFFFF9800)),
-                        listOf(Color(0xFF009688))
+                        uintArrayOf(),
+                        uintArrayOf(0xFFFF9800U),
+                        uintArrayOf(0xFF009688U)
                     ).map { palette ->
                         val svgDocument = goldenFiles[fileName]
                             ?.asSvgDocument()?.also { document ->
@@ -148,12 +138,12 @@ class IconVGTest {
                                         .setAttributeNS(
                                             null,
                                             SVGConstants.SVG_FILL_ATTRIBUTE,
-                                            color.toHexString()
+                                            argbColorToHexString(color)
                                         )
                                 }
                             }
 
-                        Arguments.of(sourceFiles[fileName], svgDocument, palette)
+                        Arguments.of(sourceFiles[fileName], svgDocument, palette.toIntArray())
                     }
                 }.toTypedArray(),
 
@@ -161,57 +151,16 @@ class IconVGTest {
                     Arguments.of(
                         sourceFiles[fileName],
                         goldenFiles[fileName]?.asSvgDocument(),
-                        emptyList<Color>()
+                        intArrayOf()
                     )
                 }
 
                 // TODO
             )
         }
-
-        @Suppress("ClassName")
-        @JvmStatic
-        private val RADIAL_GRADIENT_DELEGATE_CREATOR =
-            object : RadialGradientDelegateCreator<Nothing> {
-
-                override fun create(
-                    colors: List<Color>, stops: List<Float>?,
-                    center: Offset, radius: Float,
-                    tileMode: TileMode, matrix: Matrix
-                ): AbstractRadialGradientDelegate<Nothing> {
-
-                    class _Delegate(
-                        colors: List<Color>, stops: List<Float>?,
-                        center: Offset, radius: Float,
-                        tileMode: TileMode, matrix: Matrix
-                    ) : AbstractRadialGradientDelegate<Nothing>(
-                        colors, stops, center, radius, tileMode, matrix
-                    ) {
-
-                        override fun createShaderInternal(
-                            colors: List<Color>, stops: List<Float>?,
-                            center: Offset, radius: Float,
-                            tileMode: TileMode, matrix: Matrix
-                        ) = throw UnsupportedOperationException()
-
-                        override fun asBrush() = _Brush()
-
-                        inner class _Brush : ShaderBrush(), RadialGradientDelegateOwner<Nothing> {
-
-                            override val delegate: AbstractRadialGradientDelegate<Nothing>
-                                get() = this@_Delegate
-
-                            override fun createShader(size: Size) =
-                                throw UnsupportedOperationException()
-                        }
-                    }
-
-                    return _Delegate(colors, stops, center, radius, tileMode, matrix)
-                }
-            }
     }
 
-    private fun ImageVector.assertMatchesGoldenSvgDocument(goldenSvgDocument: SVGDocument) {
+    private fun IR.assertMatchesGoldenSvgDocument(goldenSvgDocument: SVGDocument) {
         val svgElementAttributes = goldenSvgDocument.rootElement.attributes
         val width = svgElementAttributes.getNamedItemNS(
             null, SVGConstants.SVG_WIDTH_ATTRIBUTE
@@ -262,11 +211,7 @@ class IconVGTest {
         }
     }
 
-    private fun createSvgDocument(
-        imageVector: ImageVector,
-        width: Int,
-        height: Int
-    ): SVGDocument {
+    private fun createSvgDocument(image: IR, width: Int, height: Int): SVGDocument {
         val nsUri = SVGDOMImplementation.SVG_NAMESPACE_URI
 
         return (SVGDOMImplementation.getDOMImplementation()
@@ -277,16 +222,14 @@ class IconVGTest {
                     setAttribute(SVGConstants.SVG_HEIGHT_ATTRIBUTE, height.toString())
                     setAttribute(
                         SVGConstants.SVG_VIEW_BOX_ATTRIBUTE,
-                        "0 0 ${imageVector.viewportWidth} ${imageVector.viewportHeight}"
+                        "0 0 ${image.viewportWidth} ${image.viewportHeight}"
                     )
 
                     val defsElement = createElementNS(nsUri, SVGConstants.SVG_DEFS_TAG)
                         .also(this::appendChild)
 
-                    fun createGradientElement(gradient: ShaderBrush): Element {
-                        val radialGradientDelegate =
-                            (gradient as? RadialGradientDelegateOwner<*>)?.delegate
-                        val isRadial = radialGradientDelegate != null
+                    fun createGradientElement(gradient: IR.Path.Fill): Element {
+                        val isRadial = gradient is IR.Path.Fill.RadialGradient
                         return createElementNS(
                             nsUri,
                             if (isRadial) SVGConstants.SVG_RADIAL_GRADIENT_TAG
@@ -297,35 +240,39 @@ class IconVGTest {
                                 "gradient${defsElement.childNodes.length + 1}"
                             )
 
+                            // TODO: now that types are mine, reflection is overkill
                             @Suppress("UNCHECKED_CAST")
                             fun <T> getGradientPropertyValue(name: String) =
-                                (if (isRadial) AbstractRadialGradientDelegate::class.java
-                                else LinearGradient::class.java)
+                                (if (isRadial) IR.Path.Fill.RadialGradient::class.java
+                                else IR.Path.Fill.LinearGradient::class.java)
                                     .getDeclaredField(name).also { it.trySetAccessible() }
-                                    .get(if (isRadial) radialGradientDelegate else gradient) as T
+                                    .get(gradient) as T
 
                             if (isRadial) {
                                 getGradientPropertyValue<FloatArray>("matrix")
-                                    .takeUnless { values -> Matrix(values).isIdentity() }
-                                    ?.let { matrix ->
+                                    .takeUnless {
+                                        // it.isIdentity()
+                                        for (index in 0..9)
+                                            if (it[index] != if (index % 4 == 0) 1F else 0F)
+                                                return@takeUnless false
+                                        return@takeUnless true
+                                    }?.let { matrix ->
                                         setAttribute(
                                             SVGConstants.SVG_GRADIENT_TRANSFORM_ATTRIBUTE,
                                             SVGConstants.TRANSFORM_MATRIX +
-                                                    "(${matrix[Matrix.ScaleX]}" +
-                                                    " ${matrix[Matrix.SkewY]}" +
-                                                    " ${matrix[Matrix.SkewX]}" +
-                                                    " ${matrix[Matrix.ScaleY]}" +
-                                                    " ${matrix[Matrix.TranslateX]}" +
-                                                    " ${matrix[Matrix.TranslateY]})"
+                                                    "(${matrix[IR.Matrix.INDEX_SCALE_X]}" +
+                                                    " ${matrix[IR.Matrix.INDEX_SKEW_Y]}" +
+                                                    " ${matrix[IR.Matrix.INDEX_SKEW_X]}" +
+                                                    " ${matrix[IR.Matrix.INDEX_SCALE_Y]}" +
+                                                    " ${matrix[IR.Matrix.INDEX_TRANSLATE_X]}" +
+                                                    " ${matrix[IR.Matrix.INDEX_TRANSLATE_Y]})"
                                         )
                                     }
                             }
 
-                            @Suppress("UNCHECKED_CAST")
-                            val stops = getGradientPropertyValue<List<Float>>("stops")
+                            val stops = getGradientPropertyValue<FloatArray>("stops")
+                            val colors = getGradientPropertyValue<IntArray>("colors").toUIntArray()
 
-                            @Suppress("UNCHECKED_CAST")
-                            val colors = getGradientPropertyValue<List<Color>>("colors")
                             for ((stop, color) in stops.zip(colors)) {
                                 createElementNS(nsUri, SVGConstants.SVG_STOP_TAG).apply {
                                     setAttribute(
@@ -334,44 +281,32 @@ class IconVGTest {
                                     )
                                     setAttribute(
                                         SVGConstants.SVG_STOP_COLOR_ATTRIBUTE,
-                                        color.toHexString()
+                                        argbColorToHexString(color)
                                     )
                                 }.also(this::appendChild)
                             }
 
-                            // `Offset` is an inline class, and the functions called to
-                            // pack and unpack values are inline as well, so rather than
-                            // copying their body, the internal constructor is called instead
-                            @Suppress("TestFunctionName")
-                            fun Offset(packedValue: Long) =
-                                Offset::class.java
-                                    .getDeclaredConstructor(Long::class.java)
-                                    .also { it.trySetAccessible() }
-                                    .newInstance(packedValue)
-
                             if (isRadial) {
-                                val center = Offset(getGradientPropertyValue("center"))
-                                setAttribute(SVGConstants.SVG_CX_ATTRIBUTE, "${center.x}")
-                                setAttribute(SVGConstants.SVG_CY_ATTRIBUTE, "${center.y}")
-                                setAttribute(
-                                    SVGConstants.SVG_R_ATTRIBUTE,
-                                    getGradientPropertyValue<Float>("radius").toString()
-                                )
+                                setAttribute(SVGConstants.SVG_CX_ATTRIBUTE, "0")
+                                setAttribute(SVGConstants.SVG_CY_ATTRIBUTE, "0")
+                                setAttribute(SVGConstants.SVG_R_ATTRIBUTE, "1")
                             } else {
-                                val start = Offset(getGradientPropertyValue("start"))
-                                val end = Offset(getGradientPropertyValue("end"))
-                                setAttribute(SVGConstants.SVG_X1_ATTRIBUTE, "${start.x}")
-                                setAttribute(SVGConstants.SVG_Y1_ATTRIBUTE, "${start.y}")
-                                setAttribute(SVGConstants.SVG_X2_ATTRIBUTE, "${end.x}")
-                                setAttribute(SVGConstants.SVG_Y2_ATTRIBUTE, "${end.y}")
+                                val startX = getGradientPropertyValue<Float>("startX")
+                                val startY = getGradientPropertyValue<Float>("startY")
+                                val endX = getGradientPropertyValue<Float>("endX")
+                                val endY = getGradientPropertyValue<Float>("endY")
+                                setAttribute(SVGConstants.SVG_X1_ATTRIBUTE, "$startX")
+                                setAttribute(SVGConstants.SVG_Y1_ATTRIBUTE, "$startY")
+                                setAttribute(SVGConstants.SVG_X2_ATTRIBUTE, "$endX")
+                                setAttribute(SVGConstants.SVG_Y2_ATTRIBUTE, "$endY")
                             }
 
                             val tileMode = getGradientPropertyValue<Int>("tileMode")
                             setAttribute(
                                 SVGConstants.SVG_SPREAD_METHOD_ATTRIBUTE,
                                 when (tileMode) {
-                                    1 -> SVGConstants.SVG_REPEAT_VALUE
-                                    2 -> SVGConstants.SVG_REFLECT_VALUE
+                                    IR.TileMode.REPEAT.value -> SVGConstants.SVG_REPEAT_VALUE
+                                    IR.TileMode.MIRROR.value -> SVGConstants.SVG_REFLECT_VALUE
                                     else -> SVGConstants.SVG_PAD_VALUE
                                 }
                             )
@@ -383,41 +318,34 @@ class IconVGTest {
                     // SVG document is properly rendered when opened in a browser, for example;
                     // to avoid this, the attribute is created once and will be applied to
                     // all individual paths
-                    val transformAttr = (imageVector.root.first() as? VectorGroup)
-                        ?.takeIf { it.translationX > 0 || it.translationY > 0 }
-                        ?.let {
+                    val transformAttr =
+                        if (image.translationX != 0F || image.translationY != 0F)
                             createAttribute(SVGConstants.SVG_TRANSFORM_ATTRIBUTE).apply {
                                 value = SVGConstants.TRANSFORM_TRANSLATE +
-                                        "(${it.translationX}, ${it.translationY})"
+                                        "(${image.translationX}, ${image.translationY})"
                             }
-                        }
+                        else null
 
-                    val paths = imageVector.root.fold(ArrayList<VectorPath>()) { list, node ->
-                        if (node is VectorGroup) node.filterIsInstanceTo(list)
-                        else list.apply { add(node as VectorPath) }
-                    }
-                    for (path in paths) {
+                    for (path in image.paths) {
                         createElementNS(nsUri, SVGConstants.SVG_PATH_TAG).apply {
                             transformAttr?.let(this::setAttributeNode)
 
                             setAttribute(
                                 SVGConstants.SVG_D_ATTRIBUTE,
-                                path.pathData.toSvgPathDataString()
+                                path.segments.toSvgPathDataString()
                             )
 
-                            path.fill?.let { fill ->
-                                val attributeValue = when (fill) {
-                                    is SolidColor -> fill.value.toHexString()
-                                    is ShaderBrush -> {
-                                        val gradient = createGradientElement(fill)
-                                            .also(defsElement::appendChild)
-                                        val id = gradient
-                                            .getAttribute(SVGConstants.SVG_ID_ATTRIBUTE)
-                                        "url(#$id)"
-                                    }
+                            val attributeValue = when (val fill = path.fill) {
+                                is IR.Path.Fill.Color -> fill.toString()
+                                else -> {
+                                    val gradient = createGradientElement(fill)
+                                        .also(defsElement::appendChild)
+                                    val id = gradient
+                                        .getAttribute(SVGConstants.SVG_ID_ATTRIBUTE)
+                                    "url(#$id)"
                                 }
-                                setAttribute(SVGConstants.SVG_FILL_ATTRIBUTE, attributeValue)
                             }
+                            setAttribute(SVGConstants.SVG_FILL_ATTRIBUTE, attributeValue)
                         }.also(this::appendChild)
                     }
                 }

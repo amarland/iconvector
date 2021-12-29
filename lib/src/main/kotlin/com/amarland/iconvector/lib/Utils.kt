@@ -16,10 +16,8 @@
 
 package com.amarland.iconvector.lib
 
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Matrix
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.vector.PathNode
+import kotlin.math.roundToInt
+import com.amarland.iconvector.lib.IconVGIntermediateRepresentation as IR
 
 internal fun IntArray.insert(index: Int, value: Int): IntArray {
     require(index in 0..size)
@@ -57,77 +55,25 @@ internal fun FloatArray.insert(index: Int, value: Float): FloatArray {
     }
 }
 
-fun Color.toHexString() =
-    '#' + ((alpha * (toArgb() and 0x00FFFFFF)).toUInt().toString(16)
+fun argbColorToHexString(argb: UInt) =
+    '#' + ((((argb shr 24) / 255U) * (argb and 0x00FFFFFFU)).toString(16)
         .padStart(length = 6, padChar = '0'))
 
-internal val Matrix.determinant: Float
-    get() {
-        val a00 = this[0, 0]
-        val a01 = this[0, 1]
-        val a02 = this[0, 2]
-        val a03 = this[0, 3]
-        val a10 = this[1, 0]
-        val a11 = this[1, 1]
-        val a12 = this[1, 2]
-        val a13 = this[1, 3]
-        val a20 = this[2, 0]
-        val a21 = this[2, 1]
-        val a22 = this[2, 2]
-        val a23 = this[2, 3]
-        val a30 = this[3, 0]
-        val a31 = this[3, 1]
-        val a32 = this[3, 2]
-        val a33 = this[3, 3]
-        val b00 = a00 * a11 - a01 * a10
-        val b01 = a00 * a12 - a02 * a10
-        val b02 = a00 * a13 - a03 * a10
-        val b03 = a01 * a12 - a02 * a11
-        val b04 = a01 * a13 - a03 * a11
-        val b05 = a02 * a13 - a03 * a12
-        val b06 = a20 * a31 - a21 * a30
-        val b07 = a20 * a32 - a22 * a30
-        val b08 = a20 * a33 - a23 * a30
-        val b09 = a21 * a32 - a22 * a31
-        val b10 = a21 * a33 - a23 * a31
-        val b11 = a22 * a33 - a23 * a32
-        return b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06
-    }
-
-fun Matrix.toMatrix33Values() =
-    floatArrayOf(
-        this[0, 0], this[0, 1], this[0, 3],
-        this[1, 0], this[1, 1], this[1, 3],
-        this[3, 0], this[3, 1], this[3, 3]
-    )
-
-fun Iterable<PathNode>.toSvgPathDataString(decimalPlaces: Int = Int.MAX_VALUE) =
+fun Iterable<IR.Path.Segment>.toSvgPathDataString(decimalPlaces: Int = Int.MAX_VALUE) =
     buildString {
-        joinTo(this, separator = " ") { node ->
-            val (letter, values) = when (node) {
-                is PathNode.MoveTo ->
-                    'M' to PathNode.MoveTo::class.java.declaredFieldValues(node)
-                is PathNode.LineTo ->
-                    'L' to PathNode.LineTo::class.java.declaredFieldValues(node)
-                is PathNode.QuadTo ->
-                    'Q' to PathNode.QuadTo::class.java.declaredFieldValues(node)
-                is PathNode.CurveTo ->
-                    'C' to PathNode.CurveTo::class.java.declaredFieldValues(node)
-                is PathNode.ArcTo ->
-                    'A' to PathNode.ArcTo::class.java.declaredFieldValues(node)
-                else -> return@joinTo ""
-            }
-            values.joinToString(separator = " ", prefix = "$letter ") { value ->
-                if (value is Boolean) {
-                    if (value) "1" else "0"
+        joinTo(this, separator = " ") { segment ->
+            var index = 0
+            segment.arguments.joinToString(
+                separator = " ",
+                prefix = "${segment.command.value} "
+            ) { value ->
+                if (segment.command == IR.Path.Command.ARC_TO && (index == 3 || index == 4)) {
+                    value.roundToInt().toString()
                 } else if (decimalPlaces in 0..5) {
-                    "%.2f".format(value as Float)
+                    "%.${decimalPlaces}f".format(value)
                 } else {
                     value.toString()
-                }
+                }.also { index++ }
             }
         }
     }
-
-private fun <T> Class<T>.declaredFieldValues(receiver: T) =
-    declaredFields.map { it.also { it.trySetAccessible() }.get(receiver) }
