@@ -25,22 +25,29 @@ class IconVGIntermediateRepresentation(
                 override fun toString(): String = argbColorToHexString(argb)
             }
 
+            interface Gradient : Fill {
+
+                val colors: IntArray
+                val stops: FloatArray
+                val tileMode: TileMode
+            }
+
             class LinearGradient(
-                val colors: IntArray,
-                val stops: FloatArray,
+                override val colors: IntArray,
+                override val stops: FloatArray,
                 val startX: Float,
                 val startY: Float,
                 val endX: Float,
                 val endY: Float,
-                val tileMode: TileMode
-            ) : Fill
+                override val tileMode: TileMode
+            ) : Gradient
 
             class RadialGradient(
-                val colors: IntArray,
-                val stops: FloatArray,
-                val tileMode: TileMode,
+                override val colors: IntArray,
+                override val stops: FloatArray,
+                override val tileMode: TileMode,
                 val matrix: Matrix
-            ) : Fill
+            ) : Gradient
         }
 
         @JvmInline

@@ -228,7 +228,7 @@ class IconVGTest {
                     val defsElement = createElementNS(nsUri, SVGConstants.SVG_DEFS_TAG)
                         .also(this::appendChild)
 
-                    fun createGradientElement(gradient: IR.Path.Fill): Element {
+                    fun createGradientElement(gradient: IR.Path.Fill.Gradient): Element {
                         val isRadial = gradient is IR.Path.Fill.RadialGradient
                         return createElementNS(
                             nsUri,
@@ -240,16 +240,8 @@ class IconVGTest {
                                 "gradient${defsElement.childNodes.length + 1}"
                             )
 
-                            // TODO: now that types are mine, reflection is overkill
-                            @Suppress("UNCHECKED_CAST")
-                            fun <T> getGradientPropertyValue(name: String) =
-                                (if (isRadial) IR.Path.Fill.RadialGradient::class.java
-                                else IR.Path.Fill.LinearGradient::class.java)
-                                    .getDeclaredField(name).also { it.trySetAccessible() }
-                                    .get(gradient) as T
-
                             if (isRadial) {
-                                getGradientPropertyValue<FloatArray>("matrix")
+                                (gradient as IR.Path.Fill.RadialGradient).matrix
                                     .takeUnless {
                                         // it.isIdentity()
                                         for (index in 0..9)
@@ -270,10 +262,8 @@ class IconVGTest {
                                     }
                             }
 
-                            val stops = getGradientPropertyValue<FloatArray>("stops")
-                            val colors = getGradientPropertyValue<IntArray>("colors").toUIntArray()
-
-                            for ((stop, color) in stops.zip(colors)) {
+                            val colorStops = gradient.stops.zip(gradient.colors.toUIntArray())
+                            for ((stop, color) in colorStops) {
                                 createElementNS(nsUri, SVGConstants.SVG_STOP_TAG).apply {
                                     setAttribute(
                                         SVGConstants.SVG_OFFSET_ATTRIBUTE,
@@ -291,22 +281,18 @@ class IconVGTest {
                                 setAttribute(SVGConstants.SVG_CY_ATTRIBUTE, "0")
                                 setAttribute(SVGConstants.SVG_R_ATTRIBUTE, "1")
                             } else {
-                                val startX = getGradientPropertyValue<Float>("startX")
-                                val startY = getGradientPropertyValue<Float>("startY")
-                                val endX = getGradientPropertyValue<Float>("endX")
-                                val endY = getGradientPropertyValue<Float>("endY")
-                                setAttribute(SVGConstants.SVG_X1_ATTRIBUTE, "$startX")
-                                setAttribute(SVGConstants.SVG_Y1_ATTRIBUTE, "$startY")
-                                setAttribute(SVGConstants.SVG_X2_ATTRIBUTE, "$endX")
-                                setAttribute(SVGConstants.SVG_Y2_ATTRIBUTE, "$endY")
+                                gradient as IR.Path.Fill.LinearGradient
+                                setAttribute(SVGConstants.SVG_X1_ATTRIBUTE, "${gradient.startX}")
+                                setAttribute(SVGConstants.SVG_Y1_ATTRIBUTE, "${gradient.startY}")
+                                setAttribute(SVGConstants.SVG_X2_ATTRIBUTE, "${gradient.endX}")
+                                setAttribute(SVGConstants.SVG_Y2_ATTRIBUTE, "${gradient.endY}")
                             }
 
-                            val tileMode = getGradientPropertyValue<Int>("tileMode")
                             setAttribute(
                                 SVGConstants.SVG_SPREAD_METHOD_ATTRIBUTE,
-                                when (tileMode) {
-                                    IR.TileMode.REPEAT.value -> SVGConstants.SVG_REPEAT_VALUE
-                                    IR.TileMode.MIRROR.value -> SVGConstants.SVG_REFLECT_VALUE
+                                when (gradient.tileMode) {
+                                    IR.TileMode.REPEAT -> SVGConstants.SVG_REPEAT_VALUE
+                                    IR.TileMode.MIRROR -> SVGConstants.SVG_REFLECT_VALUE
                                     else -> SVGConstants.SVG_PAD_VALUE
                                 }
                             )
@@ -338,9 +324,10 @@ class IconVGTest {
                             val attributeValue = when (val fill = path.fill) {
                                 is IR.Path.Fill.Color -> fill.toString()
                                 else -> {
-                                    val gradient = createGradientElement(fill)
-                                        .also(defsElement::appendChild)
-                                    val id = gradient
+                                    val gradientElement = createGradientElement(
+                                        fill as IR.Path.Fill.Gradient
+                                    ).also(defsElement::appendChild)
+                                    val id = gradientElement
                                         .getAttribute(SVGConstants.SVG_ID_ATTRIBUTE)
                                     "url(#$id)"
                                 }
