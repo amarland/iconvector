@@ -83,7 +83,7 @@ fun IR.toImageVector(
                                 else -> ComposeTileMode.Clamp
                             }
                         )
-                    is IR.Path.Fill.RadialGradient -> createActualRadialGradient(this)
+                    else -> createActualRadialGradient(this as IR.Path.Fill.RadialGradient)
                 }
             }
         )
